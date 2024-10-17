@@ -1,4 +1,4 @@
-package comms
+package go_rabbitmq_automatically_recovering_connections
 
 // DeliveryType represents the type of message delivery mode in RabbitMQ.
 // It defines whether the message is transient (will not be persisted) or persistent (will be persisted).

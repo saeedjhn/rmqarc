@@ -1,4 +1,4 @@
-package comms
+package go_rabbitmq_automatically_recovering_connections
 
 // ExchangeType defines the type of exchange in RabbitMQ.
 // An exchange determines how messages are routed to queues based on various rules.

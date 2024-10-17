@@ -1,4 +1,4 @@
-package comms
+package go_rabbitmq_automatically_recovering_connections
 
 import (
 	"github.com/streadway/amqp"
