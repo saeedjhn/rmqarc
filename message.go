@@ -1,4 +1,4 @@
-package go_rabbitmq_automatically_recovering_connections
+package rmqarc
 
 import "time"
 

@@ -1,4 +1,4 @@
-module github.com/saeedjhn/go-rabbitmq-automatically-recovering-connections
+module github.com/saeedjhn/rmqarc
 
 go 1.23.2
 

@@ -1,6 +1,6 @@
-// Package go_rabbitmq_automatically_recovering_connections provides functionalities for managing RabbitMQ connections,
+// Package rmqarc provides functionalities for managing RabbitMQ connections,
 // publishing messages, subscribing to queues, and automatically handling message deliveries.
-package go_rabbitmq_automatically_recovering_connections
+package rmqarc
 
 import (
 	"context"
