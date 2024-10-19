@@ -156,7 +156,7 @@ func (c *Connection) Connect() error {
 	c.connection, err = amqp.Dial(uri)
 	if err != nil {
 		return fmt.Errorf(
-			"Connect.Failed.Connect.To.Server %s : %s", uri, err.Error())
+			"connection error: failed to connect to RabbitMQ server at %s: %w", uri, err)
 	}
 
 	go func() {
@@ -166,7 +166,7 @@ func (c *Connection) Connect() error {
 
 	c.channel, err = c.connection.Channel()
 	if err != nil {
-		return fmt.Errorf("Connect.Channel: %w", err)
+		return fmt.Errorf("channel error: failed to create channel after connection: %w", err)
 	}
 
 	return nil
@@ -204,7 +204,11 @@ func (c *Connection) SetupExchange(cfg ExchangeConfig) error {
 		cfg.NoWait,
 		cfg.Args,
 	); err != nil {
-		return fmt.Errorf("SetupExchange.ExchangeDeclare: %w", err)
+		return fmt.Errorf("exchange setup error: failed to declare exchange '%s' of type '%s': %w",
+			cfg.Name,
+			cfg.Kind.String(),
+			err,
+		)
 	}
 
 	c.exchangeCfg = cfg
@@ -254,7 +258,7 @@ func (c *Connection) Reconnect() error {
 	}
 
 	return fmt.Errorf(
-		"maxRetry: %d, connErr: %w, exqErr: %w",
+		"reconnect failed after %d attempts: connection error: %w, exchange/queue setup error: %w",
 		c.config.MaxRetry,
 		connErr,
 		exqErr,
@@ -280,11 +284,11 @@ func (c *Connection) SetupExchangeAndQueue(cfg ExchangeQueueConfig) error {
 	var err error
 
 	if err = c.SetupExchange(cfg.ExchangeConfig); err != nil {
-		return fmt.Errorf("SetupExchangeAndQueue.SetupExchange: %w", err)
+		return err
 	}
 
 	if err = c.SetupBindQueue(cfg.DeclareAndBindQConfig); err != nil {
-		return fmt.Errorf("SetupExchangeAndQueue.SetupBindQueue: %w", err)
+		return err
 	}
 
 	c.exchangeQueueCfg = cfg
@@ -427,12 +431,12 @@ func (c *Connection) HandleConsumedDeliveries(
 		if err := <-c.errChan; err != nil {
 			reconnectErr := c.Reconnect()
 			if reconnectErr != nil {
-				return fmt.Errorf("handleConsumeDeliveries.Reconnect: %w", reconnectErr)
+				return fmt.Errorf("error during reconnection process: %w", reconnectErr)
 			}
 
 			deliveries, consumeErr := c.StartConsume(c.consumeCfg)
 			if consumeErr != nil {
-				return fmt.Errorf("handleConsumeDeliveries.StartConsume: %w", consumeErr)
+				return fmt.Errorf("error restarting consumption proces: %w", consumeErr)
 			}
 
 			delivery = deliveries[queue]
@@ -510,14 +514,12 @@ func (c *Connection) HandleConsumedDeliveriesAutomatic(
 				reconnectErr := c.Reconnect()
 				if reconnectErr != nil {
 					errChan <- fmt.Errorf("error during reconnection process: %w", reconnectErr)
-					// return fmt.Errorf("HandleConsumedDeliveries.Reconnect: %w", reconnectErr)
 					return
 				}
 				// Restart the consumption process
 				deliveries, consumeErr := c.StartConsume(c.consumeCfg)
 				if consumeErr != nil {
 					errChan <- fmt.Errorf("error restarting consumption process: %w", consumeErr)
-					// return fmt.Errorf("HandleConsumedDeliveries.StartConsume: %w", consumeErr)
 					return
 				}
 
@@ -547,7 +549,7 @@ func (c *Connection) declareAndBindQueue(queueName string, cfg QueueConfig) erro
 		cfg.ArgsQueueDeclare,
 	)
 	if err != nil {
-		return fmt.Errorf("declareAndBindQueue.QueueDeclare: %w", err)
+		return fmt.Errorf("failed to declare queue '%s': %w", queueName, err)
 	}
 
 	if err = c.channel.QueueBind(
@@ -557,7 +559,12 @@ func (c *Connection) declareAndBindQueue(queueName string, cfg QueueConfig) erro
 		cfg.NoWait,
 		cfg.ArgsQueueBind,
 	); err != nil {
-		return fmt.Errorf("declareAndBindQueue.QueueBind: %w", err)
+		return fmt.Errorf(
+			"failed to bind queue '%s' to exchange '%s': %w",
+			q.Name,
+			c.exchangeCfg.Name,
+			err,
+		)
 	}
 
 	if err = c.channel.Qos(
@@ -565,7 +572,7 @@ func (c *Connection) declareAndBindQueue(queueName string, cfg QueueConfig) erro
 		cfg.PrefetchSize,
 		cfg.PrefetchGlobal,
 	); err != nil {
-		return fmt.Errorf("declareAndBindQueue.Qos: %w", err)
+		return fmt.Errorf("failed to set QoS for queue '%s': %w", q.Name, err)
 	}
 
 	return nil
@@ -598,7 +605,11 @@ func (c *Connection) consumeFromTemporaryQueue(
 	)
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf(
+			"failed to consume from temporary queue with ConsumerTag '%s': %w",
+			uuIDTag,
+			err,
+		)
 	}
 
 	c.consumeCfg = cfg
@@ -614,6 +625,8 @@ func (c *Connection) consumeFromDefinedQueues(
 	deliveriesMap map[string]<-chan amqp.Delivery,
 ) (map[string]<-chan amqp.Delivery, error) {
 	for _, q := range c.queueCfg.Queues {
+		qTag := buildConsumeTag(q)
+
 		log.Printf(
 			"StartConsume.Starting.To.Consume.From.Queue, ConsumerTag: %v",
 			buildConsumeTag(q),
@@ -621,7 +634,7 @@ func (c *Connection) consumeFromDefinedQueues(
 
 		deliveries, err := c.channel.Consume(
 			q,
-			buildConsumeTag(q),
+			qTag,
 			cfg.AutoAck,
 			cfg.Exclusive,
 			cfg.NoLocal,
@@ -630,7 +643,11 @@ func (c *Connection) consumeFromDefinedQueues(
 		)
 
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf(
+				"failed to consume from defined queue with ConsumerTag '%s': %w",
+				qTag,
+				err,
+			)
 		}
 
 		deliveriesMap[q] = deliveries
