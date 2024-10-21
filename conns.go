@@ -413,7 +413,7 @@ func (c *Connection) HandleConsumedDeliveriesAutomatic(
 								errChan <- fmt.Errorf("failed to reject delivery for queue %s: %w", queue, err)
 							}
 						} else {
-							err = msg.Ack(false) // success work
+							err = msg.Ack(false) // Success
 							if err != nil {
 								errChan <- fmt.Errorf("failed to acknowledge delivery for queue %s: %w", queue, err)
 							}

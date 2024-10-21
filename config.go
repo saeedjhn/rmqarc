@@ -1,8 +1,9 @@
 package rmqarc
 
 import (
-	"github.com/streadway/amqp"
 	"time"
+
+	"github.com/streadway/amqp"
 )
 
 // ConnectionConfig defines the configuration needed to establish a connection to RabbitMQ.
