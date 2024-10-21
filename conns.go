@@ -1,5 +1,3 @@
-// Package rmqarc provides functionalities for managing RabbitMQ connections,
-// publishing messages, subscribing to queues, and automatically handling message deliveries.
 package rmqarc
 
 import (
@@ -21,7 +19,7 @@ var _connectionPool = make(map[string]*Connection)
 //
 // Fields:
 //
-//	config (ConnectionConfig): The configuration settings for the connection,
+//	connCfg (ConnectionConfig): The configuration settings for the connection,
 //	including the RabbitMQ server's credentials, host, and port.
 //
 //	connection (*amqp.Connection): A pointer to the AMQP connection instance,
@@ -33,13 +31,13 @@ var _connectionPool = make(map[string]*Connection)
 //	exchangeCfg (ExchangeConfig): The configuration settings for the exchange
 //	associated with this connection, detailing how messages are routed.
 //
-//	queueCfg (QueueConfig): The configuration settings for the queue, including
+//	queueCfg (BindQueueConfig): The configuration settings for the queue, including
 //	the name and properties of the queue used for message consumption.
 //
 //	consumeCfg (ConsumeConfig): The configuration settings for consuming messages,
 //	such as acknowledgment behavior and prefetch counts.
 //
-//	exchangeQueueCfg (ExchangeQueueConfig): The combined configuration for both
+//	exchangeQueueCfg (ExchangeBindQueueConfig): The combined configuration for both
 //	the exchange and the associated queue, used during setup.
 //
 //	deliveries (map[string]<-chan amqp.Delivery): A map of delivery channels,
@@ -48,13 +46,13 @@ var _connectionPool = make(map[string]*Connection)
 //	errChan (chan error): A channel used for reporting errors related to
 //	the connection, allowing for asynchronous error handling.
 type Connection struct {
-	config           ConnectionConfig
+	ConnCfg          ConnectionConfig
 	connection       *amqp.Connection
 	channel          *amqp.Channel
 	exchangeCfg      ExchangeConfig
-	queueCfg         QueueConfig
+	queueCfg         BindQueueConfig
 	consumeCfg       ConsumeConfig
-	exchangeQueueCfg ExchangeQueueConfig
+	exchangeQueueCfg ExchangeBindQueueConfig
 	deliveries       map[string]<-chan amqp.Delivery
 	errChan          chan error
 }
@@ -89,7 +87,7 @@ func Connections() map[string]*Connection { return _connectionPool }
 // and returns the newly created Connection instance.
 //
 // Parameters:
-//   - config: The configuration settings for the connection. This includes
+//   - connCfg: The configuration settings for the connection. This includes
 //     necessary information such as username, password, host, and port.
 //   - connectionName: A unique name for the connection. This name is used to
 //     identify the connection in the global connection pool.
@@ -108,7 +106,7 @@ func New(
 	}
 
 	c := &Connection{
-		config:  config,
+		ConnCfg: config,
 		errChan: make(chan error),
 	}
 
@@ -147,10 +145,10 @@ func (c *Connection) Connect() error {
 
 	var err error
 	uri := fmt.Sprintf("amqp://%s:%s@%s%s",
-		c.config.Username,
-		c.config.Password,
-		c.config.Host,
-		c.config.Port,
+		c.ConnCfg.Username,
+		c.ConnCfg.Password,
+		c.ConnCfg.Host,
+		c.ConnCfg.Port,
 	)
 
 	c.connection, err = amqp.Dial(uri)
@@ -179,7 +177,7 @@ func (c *Connection) Connect() error {
 //
 // Parameters:
 //
-//	cfg: ExchangeConfig - The configuration settings for the exchange, which include:
+//	connCfg: ExchangeConfig - The configuration settings for the exchange, which include:
 //	  - Name: The name of the exchange.
 //	  - Kind: The type of the exchange (e.g., direct, topic).
 //	  - Durable: Indicates whether the exchange should survive a server restart.
@@ -216,96 +214,16 @@ func (c *Connection) SetupExchange(cfg ExchangeConfig) error {
 	return nil
 }
 
-// Reconnect attempts to re-establish the RabbitMQ connection and reconfigures
-// the exchange and queue settings with specified retry logic. It tries to
-// connect to the RabbitMQ server multiple times as defined in the connection
-// configuration. If a connection attempt fails, it will log the error and
-// wait for a specified timeout before retrying. If the exchange and queue
-// setup fails, it will return an error indicating the failure. The retry
-// timeout is multiplied by a defined factor after each failed attempt,
-// with a maximum delay enforced.
-//
-// Returns:
-//   - error: Returns nil if the reconnection and setup are successful;
-//     otherwise, returns an error containing details about the connection
-//     and setup failures.
-func (c *Connection) Reconnect() error {
-	log.Println("Reconnect.Invoked")
-
-	var (
-		retryTimeout = c.config.BaseRetryTimeout
-		connErr      error
-		exqErr       error
-	)
-
-	for range c.config.MaxRetry {
-		if connErr = c.Connect(); connErr == nil {
-			return nil
-		}
-
-		if exqErr = c.SetupExchangeAndQueue(c.exchangeQueueCfg); exqErr == nil {
-			return nil
-		}
-
-		retryTimeout = time.Duration(float64(retryTimeout) * c.config.Multiplier)
-		log.Printf("retryTimeout: %v", retryTimeout)
-
-		time.Sleep(retryTimeout)
-
-		if retryTimeout > c.config.MaxDelay {
-			retryTimeout = c.config.BaseRetryTimeout
-		}
-	}
-
-	return fmt.Errorf(
-		"reconnect failed after %d attempts: connection error: %w, exchange/queue setup error: %w",
-		c.config.MaxRetry,
-		connErr,
-		exqErr,
-	)
-}
-
-// SetupExchangeAndQueue configures both the exchange and queue settings
-// for the connection using the provided ExchangeQueueConfig. It first sets up
-// the exchange defined in ExchangeConfig and then binds a queue using the
-// provided DeclareAndBindQConfig. This method ensures that the exchange
-// is correctly configured before proceeding to bind the queue to it.
+// SetupBindQueue binds a queue to the exchange with the given BindQueueConfig.
+// If no queues are defined in the connCfg, it binds a temporary queue.
+// It iterates over all the queues specified in the BindQueueConfig and binds each queue.
 //
 // Parameters:
-//   - cfg: An ExchangeQueueConfig struct that contains the configuration
-//     details for the exchange and the queue binding.
-//
-// Returns:
-//   - error: Returns nil if the setup is successful; otherwise, returns an
-//     error indicating what went wrong during the setup process.
-func (c *Connection) SetupExchangeAndQueue(cfg ExchangeQueueConfig) error {
-	log.Println("SetupExchangeAndQueue.Invoked")
-
-	var err error
-
-	if err = c.SetupExchange(cfg.ExchangeConfig); err != nil {
-		return err
-	}
-
-	if err = c.SetupBindQueue(cfg.DeclareAndBindQConfig); err != nil {
-		return err
-	}
-
-	c.exchangeQueueCfg = cfg
-
-	return nil
-}
-
-// SetupBindQueue binds a queue to the exchange with the given QueueConfig.
-// If no queues are defined in the config, it binds a temporary queue.
-// It iterates over all the queues specified in the QueueConfig and binds each queue.
-//
-// Parameters:
-//   - cfg (QueueConfig): The configuration of the queue, including the queue names, binding details, etc.
+//   - connCfg (BindQueueConfig): The configuration of the queue, including the queue names, binding details, etc.
 //
 // Returns:
 //   - error: If an error occurs during queue declaration or binding, it returns the error.
-func (c *Connection) SetupBindQueue(cfg QueueConfig) error {
+func (c *Connection) SetupBindQueue(cfg BindQueueConfig) error {
 	log.Println("SetupBindQueue.Invoked")
 
 	c.queueCfg = cfg
@@ -323,13 +241,44 @@ func (c *Connection) SetupBindQueue(cfg QueueConfig) error {
 	return nil
 }
 
+// SetupExchangeAndQueue configures both the exchange and queue settings
+// for the connection using the provided ExchangeBindQueueConfig. It first sets up
+// the exchange defined in ExchangeConfig and then binds a queue using the
+// provided BindQConfig. This method ensures that the exchange
+// is correctly configured before proceeding to bind the queue to it.
+//
+// Parameters:
+//   - connCfg: An ExchangeBindQueueConfig struct that contains the configuration
+//     details for the exchange and the queue binding.
+//
+// Returns:
+//   - error: Returns nil if the setup is successful; otherwise, returns an
+//     error indicating what went wrong during the setup process.
+func (c *Connection) SetupExchangeAndQueue(cfg ExchangeBindQueueConfig) error {
+	log.Println("SetupExchangeAndQueue.Invoked")
+
+	var err error
+
+	if err = c.SetupExchange(cfg.ExchangeConfig); err != nil {
+		return err
+	}
+
+	if err = c.SetupBindQueue(cfg.BindQConfig); err != nil {
+		return err
+	}
+
+	c.exchangeQueueCfg = cfg
+
+	return nil
+}
+
 // StartConsume starts consuming messages from the queues defined in the ConsumeConfig.
 // It returns a map where the keys are the queue names and the values are channels
 // through which deliveries are received. If no queues are defined, it creates
 // and consumes from a temporary queue.
 //
 // Parameters:
-//   - cfg (ConsumeConfig): The configuration for consuming messages, which includes
+//   - connCfg (ConsumeConfig): The configuration for consuming messages, which includes
 //     queue names, prefetch count, and consumer tag details.
 //
 // Returns:
@@ -345,66 +294,6 @@ func (c *Connection) StartConsume(cfg ConsumeConfig) (map[string]<-chan amqp.Del
 	}
 
 	return c.consumeFromDefinedQueues(cfg, m)
-}
-
-// Publish sends a message to the configured exchange and routing key.
-// It uses the provided PublishConfig to determine the routing and exchange settings.
-// If an exchange is not selected in the config or the connection's exchange configuration,
-// it returns an error. It also checks for errors in a non-blocking manner from the error channel.
-//
-// Parameters:
-//   - cfg (PublishConfig): The configuration for publishing, which includes exchange name,
-//     routing key, and flags like Mandatory and Immediate.
-//   - msg (Message): The message to be published. It contains the content, headers, and metadata.
-//
-// Returns:
-//   - error: Returns an error if publishing fails or if the exchange is not set.
-func (c *Connection) Publish(cfg PublishConfig, msg Message) error {
-	log.Println("Publish.Invoked")
-
-	if len(cfg.ExchangeName) == 0 && len(c.exchangeCfg.Name) == 0 {
-		return errors.New("exchange is not selected")
-	}
-
-	// non-blocking channel - if there is no error will go to default where we do nothing
-	select {
-	case err := <-c.errChan:
-		if err != nil {
-			return c.Reconnect()
-		}
-	default:
-	}
-
-	p := amqp.Publishing{
-		Headers:         amqp.Table{"type": msg.Body.Type},
-		ContentType:     msg.ContentType,
-		ContentEncoding: msg.ContentEncoding,
-		DeliveryMode:    msg.DeliveryMode.Uint8(),
-		Priority:        msg.Priority,
-		CorrelationId:   msg.CorrelationId,
-		ReplyTo:         msg.ReplyTo,
-		Expiration:      msg.Expiration,
-		MessageId:       msg.MessageId,
-		Timestamp:       time.Time{},
-		Type:            msg.Type,
-		UserId:          msg.UserId,
-		AppId:           msg.AppId,
-		Body:            msg.Body.Data,
-	}
-
-	ex := c.selectExchange(cfg)
-
-	if err := c.channel.Publish(
-		ex,
-		cfg.RoutingKey,
-		cfg.Mandatory,
-		cfg.Immediate,
-		p,
-	); err != nil {
-		return fmt.Errorf("Publish.Publish: %w", err)
-	}
-
-	return nil
 }
 
 // HandleConsumedDeliveries processes message deliveries from a specific queue
@@ -429,7 +318,7 @@ func (c *Connection) HandleConsumedDeliveries(
 	for {
 		go fn(*c, queue, delivery)
 		if err := <-c.errChan; err != nil {
-			reconnectErr := c.Reconnect()
+			reconnectErr := c.reconnect()
 			if reconnectErr != nil {
 				return fmt.Errorf("error during reconnection process: %w", reconnectErr)
 			}
@@ -444,6 +333,36 @@ func (c *Connection) HandleConsumedDeliveries(
 	}
 }
 
+// HandleConsumedDeliveriesAutomatic automatically handles message deliveries from multiple queues,
+// processes them using the provided subscriber, and manages error handling, including connection
+// recovery and message acknowledgment. It listens for errors and context cancellation,
+// ensuring continuous consumption unless the context is explicitly cancelled.
+//
+// This method runs a goroutine for each queue, listening for messages, processing them,
+// and sending errors back through the provided errChan. If the connection is lost or any
+// other errors occur, it attempts to reconnect and resume consumption.
+//
+// Parameters:
+//   - ctx (context.Context): The context used to manage the lifecycle of the message consumption.
+//     When cancelled, all goroutines stop processing and exit gracefully.
+//   - errChan (chan error): A channel for reporting errors during message consumption or connection issues.
+//     If an error is encountered, it is sent through this channel. A nil value indicates successful message processing.
+//   - subscriber (Subscriber): An implementation of the Subscriber interface that defines how to handle the consumed messages.
+//     The method subscriber.Subscribe(ctx, Message) is called for each received message.
+//
+// Goroutine Behavior:
+//
+//	For each queue, a new goroutine is started that listens for deliveries on the delivery channel. The subscriber
+//	processes each message, and based on the result, the message is either acknowledged (if successful) or rejected (if failed).
+//	- If the delivery channel closes unexpectedly, the goroutine reports the error and exits.
+//	- If the context is cancelled, the goroutine stops processing messages and exits gracefully.
+//
+// Connection Handling:
+//   - The method continuously monitors the connection's error channel. If an error is detected, it tries to reconnect
+//     and resumes the consumption process once the connection is re-established.
+//
+// Returns:
+//   - None. However, errors and status updates are sent to errChan.
 func (c *Connection) HandleConsumedDeliveriesAutomatic(
 	ctx context.Context,
 	errChan chan error,
@@ -511,7 +430,7 @@ func (c *Connection) HandleConsumedDeliveriesAutomatic(
 		case err := <-c.errChan:
 			if err != nil {
 				// Attempt to reconnect if an error occurred
-				reconnectErr := c.Reconnect()
+				reconnectErr := c.reconnect()
 				if reconnectErr != nil {
 					errChan <- fmt.Errorf("error during reconnection process: %w", reconnectErr)
 					return
@@ -533,11 +452,121 @@ func (c *Connection) HandleConsumedDeliveriesAutomatic(
 	}
 }
 
+// Publish sends a message to the configured exchange and routing key.
+// It uses the provided PublishConfig to determine the routing and exchange settings.
+// If an exchange is not selected in the connCfg or the connection's exchange configuration,
+// it returns an error. It also checks for errors in a non-blocking manner from the error channel.
+//
+// Parameters:
+//   - connCfg (PublishConfig): The configuration for publishing, which includes exchange name,
+//     routing key, and flags like Mandatory and Immediate.
+//   - msg (Message): The message to be published. It contains the content, headers, and metadata.
+//
+// Returns:
+//   - error: Returns an error if publishing fails or if the exchange is not set.
+func (c *Connection) Publish(cfg PublishConfig, msg Message) error {
+	log.Println("Publish.Invoked")
+
+	if len(cfg.ExchangeName) == 0 && len(c.exchangeCfg.Name) == 0 {
+		return errors.New("exchange is not selected")
+	}
+
+	// non-blocking channel - if there is no error will go to default where we do nothing
+	select {
+	case err := <-c.errChan:
+		if err != nil {
+			return c.reconnect()
+		}
+	default:
+	}
+
+	p := amqp.Publishing{
+		Headers:         amqp.Table{"type": msg.Body.Type},
+		ContentType:     msg.ContentType,
+		ContentEncoding: msg.ContentEncoding,
+		DeliveryMode:    msg.DeliveryMode.Uint8(),
+		Priority:        msg.Priority,
+		CorrelationId:   msg.CorrelationId,
+		ReplyTo:         msg.ReplyTo,
+		Expiration:      msg.Expiration,
+		MessageId:       msg.MessageId,
+		Timestamp:       time.Time{},
+		Type:            msg.Type,
+		UserId:          msg.UserId,
+		AppId:           msg.AppId,
+		Body:            msg.Body.Data,
+	}
+
+	ex := c.selectExchange(cfg)
+
+	if err := c.channel.Publish(
+		ex,
+		cfg.RoutingKey,
+		cfg.Mandatory,
+		cfg.Immediate,
+		p,
+	); err != nil {
+		return fmt.Errorf("Publish.Publish: %w", err)
+	}
+
+	return nil
+}
+
+// reconnect attempts to re-establish the RabbitMQ connection and reconfigures
+// the exchange and queue settings with specified retry logic. It tries to
+// connect to the RabbitMQ server multiple times as defined in the connection
+// configuration. If a connection attempt fails, it will log the error and
+// wait for a specified timeout before retrying. If the exchange and queue
+// setup fails, it will return an error indicating the failure. The retry
+// timeout is multiplied by a defined factor after each failed attempt,
+// with a maximum delay enforced.
+//
+// Returns:
+//   - error: Returns nil if the reconnection and setup are successful;
+//     otherwise, returns an error containing details about the connection
+//     and setup failures.
+
+func (c *Connection) reconnect() error {
+	log.Println("reconnect.Invoked")
+
+	var (
+		retryTimeout = c.ConnCfg.BaseRetryTimeout
+		connErr      error
+		exqErr       error
+	)
+
+	for range c.ConnCfg.MaxRetry {
+		if connErr = c.Connect(); connErr == nil {
+			return nil
+		}
+
+		if exqErr = c.SetupExchangeAndQueue(c.exchangeQueueCfg); exqErr == nil {
+			return nil
+		}
+
+		retryTimeout = time.Duration(float64(retryTimeout) * c.ConnCfg.Multiplier)
+		//log.Printf("retryTimeout: %v", retryTimeout)
+
+		time.Sleep(retryTimeout)
+
+		if retryTimeout > c.ConnCfg.MaxDelay {
+			retryTimeout = c.ConnCfg.BaseRetryTimeout
+		}
+	}
+
+	return fmt.Errorf(
+		"reconnect failed after %d attempts: connection error: %w, exchange/queue setup error: %w",
+		c.ConnCfg.MaxRetry,
+		connErr,
+		exqErr,
+	)
+}
+
 func (c *Connection) isEmptyQueues() bool {
 	return len(c.queueCfg.Queues) == 0 || c.queueCfg.Queues == nil
 }
 
-func (c *Connection) declareAndBindQueue(queueName string, cfg QueueConfig) error {
+func (c *Connection) declareAndBindQueue(queueName string, cfg BindQueueConfig) error {
 	log.Println("declareAndBindQueue.Invoked")
 
 	q, err := c.channel.QueueDeclare(
