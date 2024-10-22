@@ -27,7 +27,7 @@ package rmqarc_test
 
 import (
 	"context"
-	"log"
+	"fmt"
 	"time"
 
 	"github.com/saeedjhn/rmqarc"
@@ -55,20 +55,35 @@ func ExampleNew() {
 	conn := rmqarc.New(connCfg, "example-connection")
 
 	// Log the resulting connection object for debugging purposes.
-	log.Printf("%#v", conn)
+	fmt.Printf("%#v", conn)
 }
 
 // ExampleConnections demonstrates how to use the Connections() function
 // to retrieve all active connections.
 func ExampleConnections() {
+	// Define the connection configuration for RabbitMQ.
+	connCfg := rmqarc.ConnectionConfig{
+		Host:             "localhost",
+		Username:         "guest",
+		Password:         "guest",
+		Port:             ":5672",
+		BaseRetryTimeout: 1 * time.Second,
+		Multiplier:       1.5,
+		MaxDelay:         60 * time.Second,
+		MaxRetry:         5,
+	}
+
+	rmqarc.New(connCfg, "example-connection-1")
+	rmqarc.New(connCfg, "example-connection-2")
+
 	conns := rmqarc.Connections()
 
 	// Print the number of active connections
-	log.Printf("Active connections count: %d", len(conns))
+	fmt.Printf("Active connections count: %d\n", len(conns))
 
-	// Iterate through the connections and log.Println their details
+	// Iterate through the connections and fmt.Println their details
 	for _, conn := range conns {
-		log.Printf("Connection Name: %v", conn.ConnCfg)
+		fmt.Printf("Connection Name: %v\n", conn.Name)
 	}
 }
 
@@ -77,13 +92,13 @@ func ExampleConnections() {
 func ExampleGetConnection() {
 	conn := rmqarc.GetConnection("example-connection")
 	if conn == nil {
-		log.Println("Connection not found.")
+		fmt.Println("Connection not found.")
 	} else {
-		log.Println("Connection retrieved successfully.")
+		fmt.Println("Connection retrieved successfully.")
 	}
 }
 
-// ExampleConnection_Queues demonstrates how to retrieve and log.Println the names
+// ExampleConnection_Queues demonstrates how to retrieve and fmt.Println the names
 // of queues configured for the current connection.
 func ExampleConnection_Queues() {
 	// Define the connection configuration for RabbitMQ.
@@ -105,15 +120,15 @@ func ExampleConnection_Queues() {
 	queues := conn.Queues()
 
 	// Print the number of queues.
-	log.Println("Number of queues configured:", len(queues))
+	fmt.Println("Number of queues configured:", len(queues))
 
-	// If there are any queues, log.Println their names.
+	// If there are any queues, fmt.Println their names.
 	if len(queues) > 0 {
 		for _, queueName := range queues {
-			log.Println("Queue Name:", queueName)
+			fmt.Println("Queue Name:", queueName)
 		}
 	} else {
-		log.Println("No queues are configured for this connection.")
+		fmt.Println("No queues are configured for this connection.")
 	}
 }
 
@@ -139,15 +154,15 @@ func ExampleConnection_Connect() {
 	err := conn.Connect()
 	if err != nil {
 		// Handle the error if the connection or channel setup fails.
-		log.Println("Failed to establish connection:", err.Error())
+		fmt.Println("Failed to establish connection:", err.Error())
 		return
 	}
 
-	// If the connection is successful, log the success.
-	log.Println("Successfully connected to RabbitMQ server and created a channel.")
+	// If the connection is successful, fmt.the success.
+	fmt.Println("Successfully connected to RabbitMQ server and created a channel.")
 
 	// You can now proceed to use the connection to publish or consume messages.
-	// Example: conn.Publish(), conn.Consume()...
+	// Example: conn.SetupExchange, ...
 }
 
 // ExampleConnection_SetupExchange demonstrates how to use the SetupExchange
@@ -171,7 +186,7 @@ func ExampleConnection_SetupExchange() {
 	// First, establish the connection to the RabbitMQ server.
 	err := conn.Connect()
 	if err != nil {
-		log.Println("Failed to connect to RabbitMQ:", err.Error())
+		fmt.Println("Failed to connect to RabbitMQ:", err.Error())
 		return
 	}
 
@@ -189,15 +204,15 @@ func ExampleConnection_SetupExchange() {
 	// Set up the exchange using the SetupExchange method.
 	err = conn.SetupExchange(exchangeCfg)
 	if err != nil {
-		log.Println("Failed to set up exchange:", err.Error())
+		fmt.Println("Failed to set up exchange:", err.Error())
 		return
 	}
 
-	// If the exchange setup is successful, log the success.
-	log.Println("Exchange successfully declared:", exchangeCfg.Name)
+	// If the exchange setup is successful, fmt.the success.
+	fmt.Println("Exchange successfully declared:", exchangeCfg.Name)
 
 	// Now you can proceed with binding queues or publishing messages to the exchange.
-	// Example: conn.BindQueue(), ...
+	// Example: conn.SetupBindQueue(), ...
 }
 
 // ExampleConnection_SetupBindQueue demonstrates how to use the SetupBindQueue
@@ -221,7 +236,7 @@ func ExampleConnection_SetupBindQueue() {
 	// First, establish the connection to the RabbitMQ server.
 	err := conn.Connect()
 	if err != nil {
-		log.Println("Failed to connect to RabbitMQ:", err.Error())
+		fmt.Println("Failed to connect to RabbitMQ:", err.Error())
 		return
 	}
 
@@ -239,7 +254,7 @@ func ExampleConnection_SetupBindQueue() {
 	// Set up the exchange using the SetupExchange method.
 	err = conn.SetupExchange(exchangeCfg)
 	if err != nil {
-		log.Println("Failed to set up exchange:", err.Error())
+		fmt.Println("Failed to set up exchange:", err.Error())
 		return
 	}
 
@@ -264,12 +279,12 @@ func ExampleConnection_SetupBindQueue() {
 	// Bind the queues to the exchange using the SetupBindQueue method.
 	err = conn.SetupBindQueue(queueCfg)
 	if err != nil {
-		log.Println("Failed to bind queues to the exchange:", err.Error())
+		fmt.Println("Failed to bind queues to the exchange:", err.Error())
 		return
 	}
 
-	// If the queue binding is successful, log the success.
-	log.Println("Queues successfully declared and bound to exchange:", exchangeCfg.Name)
+	// If the queue binding is successful, fmt.the success.
+	fmt.Println("Queues successfully declared and bound to exchange:", exchangeCfg.Name)
 
 	// Now, you can proceed with consuming messages from the bound queues.
 	// Example: conn.StartConsume(), ...
@@ -329,10 +344,11 @@ func ExampleConnection_SetupExchangeAndQueue() {
 	// Set up the exchange and bind the queue
 	err := conn.SetupExchangeAndQueue(exchangeBindQueueCfg)
 	if err != nil {
-		log.Fatalf("Failed to setup exchange and queue: %v", err)
+		fmt.Printf("Failed to setup exchange and queue: %v", err)
+		return
 	}
 
-	log.Println("Exchange and queues set up successfully.")
+	fmt.Println("Exchange and queues set up successfully.")
 }
 
 // ExampleConnection_StartConsume demonstrates how to start consuming messages
@@ -370,29 +386,32 @@ func ExampleConnection_StartConsume() {
 	// Step 4: Set up the exchange using the SetupExchange method.
 	err := conn.SetupExchange(exchangeCfg)
 	if err != nil {
-		log.Println("Failed to set up exchange:", err.Error())
+		fmt.Println("Failed to set up exchange:", err.Error())
 		return
 	}
 
 	// Step 5: Define the queue configuration for binding queues to the exchange.
 	queueCfg := rmqarc.BindQueueConfig{
-		Queues:           []string{"example-queue-1", "example-queue-2"}, // Define the queue names to be declared and bound to the exchange
-		Durable:          true,                                           // The queue will survive a RabbitMQ server restart if set to true
-		AutoDelete:       false,                                          // The queue will not be automatically deleted when no longer in use
-		Exclusive:        false,                                          // The queue is not exclusive, meaning other connections can access it
-		NoWait:           false,                                          // The client will wait for confirmation from the broker on queue declaration
-		ArgsQueueDeclare: nil,                                            // Additional arguments for queue declaration (e.g., TTL or max length)
-		BindingKey:       "routing-key-example",                          // The routing key used to bind the queue to the exchange
-		ArgsQueueBind:    nil,                                            // Additional arguments for queue binding (can be used for advanced routing)
-		PrefetchCount:    1,                                              // The number of messages the server will deliver before expecting an ack
-		PrefetchSize:     0,                                              // The maximum size (in bytes) of unacknowledged messages (0 means unlimited)
-		PrefetchGlobal:   false,                                          // Apply the prefetch count limit to the entire connection or just this channel
+		Queues: []string{
+			"example-queue-1",
+			"example-queue-2",
+		}, // Define the queue names to be declared and bound to the exchange
+		Durable:          true,                  // The queue will survive a RabbitMQ server restart if set to true
+		AutoDelete:       false,                 // The queue will not be automatically deleted when no longer in use
+		Exclusive:        false,                 // The queue is not exclusive, meaning other connections can access it
+		NoWait:           false,                 // The client will wait for confirmation from the broker on queue declaration
+		ArgsQueueDeclare: nil,                   // Additional arguments for queue declaration (e.g., TTL or max length)
+		BindingKey:       "routing-key-example", // The routing key used to bind the queue to the exchange
+		ArgsQueueBind:    nil,                   // Additional arguments for queue binding (can be used for advanced routing)
+		PrefetchCount:    1,                     // The number of messages the server will deliver before expecting an ack
+		PrefetchSize:     0,                     // The maximum size (in bytes) of unacknowledged messages (0 means unlimited)
+		PrefetchGlobal:   false,                 // Apply the prefetch count limit to the entire connection or just this channel
 	}
 
 	// Step 6: Bind the queues to the exchange using the SetupBindQueue method.
 	err = conn.SetupBindQueue(queueCfg)
 	if err != nil {
-		log.Println("Failed to bind queues to the exchange:", err.Error())
+		fmt.Println("Failed to bind queues to the exchange:", err.Error())
 		return
 	}
 
@@ -408,24 +427,25 @@ func ExampleConnection_StartConsume() {
 	// Step 8: Start consuming messages from the defined queues
 	deliveries, err := conn.StartConsume(consumeCfg)
 	if err != nil {
-		log.Fatalf("Failed to start consuming messages: %v", err)
+		fmt.Printf("Failed to start consuming messages: %v", err)
+		return
 	}
 
 	// Step 9: Process the messages from the deliveries channels
 	for queueName, deliveryChan := range deliveries {
 		go func(queue string, msgs <-chan amqp.Delivery) {
 			for msg := range msgs {
-				log.Printf("Received message from %s: %s", queue, msg.Body)
+				fmt.Printf("Received message from %s: %s", queue, msg.Body)
 				// Acknowledge the message after processing
 				err = msg.Ack(false)
 				if err != nil {
-					log.Printf("Failed to acknowledge message: %v", err)
+					fmt.Printf("Failed to acknowledge message: %v", err)
 				}
 			}
 		}(queueName, deliveryChan)
 	}
 
-	log.Println("Started consuming messages from queues.")
+	fmt.Println("Started consuming messages from queues.")
 }
 
 // ExampleConnection_HandleConsumedDeliveries demonstrates how to consume messages from a queue
@@ -465,7 +485,7 @@ func ExampleConnection_HandleConsumedDeliveries() {
 	// Step 4: Set up the exchange using the SetupExchange method.
 	err := conn.SetupExchange(exchangeCfg)
 	if err != nil {
-		log.Println("Failed to set up exchange:", err.Error())
+		fmt.Println("Failed to set up exchange:", err.Error())
 		return
 	}
 
@@ -487,7 +507,7 @@ func ExampleConnection_HandleConsumedDeliveries() {
 	// Step 6: Bind the queues to the exchange using the SetupBindQueue method.
 	err = conn.SetupBindQueue(queueCfg)
 	if err != nil {
-		log.Println("Failed to bind queues to the exchange:", err.Error())
+		fmt.Println("Failed to bind queues to the exchange:", err.Error())
 		return
 	}
 
@@ -503,7 +523,8 @@ func ExampleConnection_HandleConsumedDeliveries() {
 	// Step 8: Start consuming messages from the defined queues
 	deliveries, err := conn.StartConsume(consumeCfg)
 	if err != nil {
-		log.Fatalf("Failed to start consuming messages: %v", err)
+		fmt.Printf("Failed to start consuming messages: %v", err)
+		return
 	}
 
 	// Step 9: Define messageHandler
@@ -528,7 +549,7 @@ func ExampleConnection_HandleConsumedDeliveries() {
 				},
 			}
 			//handle the custom message
-			log.Println("Got message from queue ", m)
+			fmt.Println("Got message from queue ", m)
 
 			err = d.Ack(false) // Success
 			if err != nil {
@@ -544,7 +565,7 @@ func ExampleConnection_HandleConsumedDeliveries() {
 			err = conn.HandleConsumedDeliveries(q, d, messageHandler)
 			if err != nil {
 				// Logger
-				log.Println(err)
+				fmt.Println(err)
 			}
 		}()
 	}
@@ -558,7 +579,7 @@ func ExampleConnection_HandleConsumedDeliveries() {
 // from multiple queues, handling errors and reconnection attempts, while supporting
 // context-based cancellation.
 //
-// In this example, a simple subscriber is defined that log.Printlns the message content and
+// In this example, a simple subscriber is defined that fmt.Printlns the message content and
 // then acknowledges it. The message consumption runs until the context is canceled.
 func ExampleConnection_HandleConsumedDeliveriesAutomatic() {
 	// Creates a channel to keep the main goroutine running indefinitely, typically used to prevent the program from exiting.
@@ -576,7 +597,7 @@ func ExampleConnection_HandleConsumedDeliveriesAutomatic() {
 
 	// Using a function as a subscriberFunc
 	var subscriberFunc rmqarc.SubscriberFunc = func(ctx context.Context, msg rmqarc.Message) error {
-		log.Printf("Received message from queue: %s, MessageID: %s, Body: %s",
+		fmt.Printf("Received message from queue: %s, MessageID: %s, Body: %s",
 			msg.MessageId, msg.Body.Type, string(msg.Body.Data))
 		return nil
 	}
@@ -611,7 +632,7 @@ func ExampleConnection_HandleConsumedDeliveriesAutomatic() {
 	// Set up the exchange using the SetupExchange method.
 	err := conn.SetupExchange(exchangeCfg)
 	if err != nil {
-		log.Println("Failed to set up exchange:", err.Error())
+		fmt.Println("Failed to set up exchange:", err.Error())
 		return
 	}
 
@@ -633,7 +654,7 @@ func ExampleConnection_HandleConsumedDeliveriesAutomatic() {
 	// Bind the queues to the exchange using the SetupBindQueue method.
 	err = conn.SetupBindQueue(queueCfg)
 	if err != nil {
-		log.Println("Failed to bind queues to the exchange:", err.Error())
+		fmt.Println("Failed to bind queues to the exchange:", err.Error())
 		return
 	}
 
@@ -649,7 +670,8 @@ func ExampleConnection_HandleConsumedDeliveriesAutomatic() {
 	// Start consuming messages from the defined queues
 	_, err = conn.StartConsume(consumeCfg)
 	if err != nil {
-		log.Fatalf("Failed to start consuming messages: %v", err)
+		fmt.Printf("Failed to start consuming messages: %v", err)
+		return
 	}
 
 	go func() {
@@ -658,7 +680,7 @@ func ExampleConnection_HandleConsumedDeliveriesAutomatic() {
 			for {
 				if errCh := <-errChan; errCh != nil {
 					// Logger
-					log.Printf("Error occurred while handling automatic message deliveries: %v", errCh)
+					fmt.Printf("Error occurred while handling automatic message deliveries: %v", errCh)
 				}
 			}
 		}()
@@ -720,8 +742,8 @@ func ExampleConnection_Publish() {
 	// Publish the message
 	err := conn.Publish(pubCfg, msg)
 	if err != nil {
-		log.Println("Failed to publish message: ", err.Error())
+		fmt.Println("Failed to publish message: ", err.Error())
 	}
 
-	log.Println("Message published successfully.")
+	fmt.Println("Message published successfully.")
 }
