@@ -19,6 +19,8 @@ var _connectionPool = make(map[string]*Connection)
 //
 // Fields:
 //
+//	Name (string): A unique identifier for the RabbitMQ connection.
+//
 //	connCfg (ConnectionConfig): The configuration settings for the connection,
 //	including the RabbitMQ server's credentials, host, and port.
 //
@@ -46,6 +48,7 @@ var _connectionPool = make(map[string]*Connection)
 //	errChan (chan error): A channel used for reporting errors related to
 //	the connection, allowing for asynchronous error handling.
 type Connection struct {
+	Name             string
 	ConnCfg          ConnectionConfig
 	connection       *amqp.Connection
 	channel          *amqp.Channel
@@ -106,6 +109,7 @@ func New(
 	}
 
 	c := &Connection{
+		Name:    connectionName,
 		ConnCfg: config,
 		errChan: make(chan error),
 	}
