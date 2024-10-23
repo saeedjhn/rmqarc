@@ -30,16 +30,16 @@ var _connectionPool = make(map[string]*Connection)
 //	channel (*amqp.Channel): A pointer to the AMQP channel instance, which
 //	allows for publishing and consuming messages on the RabbitMQ server.
 //
-//	exchangeCfg (ExchangeConfig): The configuration settings for the exchange
+//	exchangeCfg (ExchangeCfg): The configuration settings for the exchange
 //	associated with this connection, detailing how messages are routed.
 //
-//	queueCfg (BindQueueConfig): The configuration settings for the queue, including
+//	queueCfg (QueueBindCfg): The configuration settings for the queue, including
 //	the name and properties of the queue used for message consumption.
 //
 //	consumeCfg (ConsumeConfig): The configuration settings for consuming messages,
 //	such as acknowledgment behavior and prefetch counts.
 //
-//	exchangeQueueCfg (ExchangeBindQueueConfig): The combined configuration for both
+//	exchangeAndQueueBindCfg (ExchangeAndQueueBindConfig): The combined configuration for both
 //	the exchange and the associated queue, used during setup.
 //
 //	deliveries (map[string]<-chan amqp.Delivery): A map of delivery channels,
@@ -48,16 +48,16 @@ var _connectionPool = make(map[string]*Connection)
 //	errChan (chan error): A channel used for reporting errors related to
 //	the connection, allowing for asynchronous error handling.
 type Connection struct {
-	Name             string
-	ConnCfg          ConnectionConfig
-	connection       *amqp.Connection
-	channel          *amqp.Channel
-	exchangeCfg      ExchangeConfig
-	queueCfg         BindQueueConfig
-	consumeCfg       ConsumeConfig
-	exchangeQueueCfg ExchangeBindQueueConfig
-	deliveries       map[string]<-chan amqp.Delivery
-	errChan          chan error
+	Name                    string
+	ConnCfg                 ConnectionConfig
+	connection              *amqp.Connection
+	channel                 *amqp.Channel
+	exchangeCfg             ExchangeConfig
+	queueCfg                QueueBindConfig
+	consumeCfg              ConsumeConfig
+	exchangeAndQueueBindCfg ExchangeAndQueueBindConfig
+	deliveries              map[string]<-chan amqp.Delivery
+	errChan                 chan error
 }
 
 // GetConnection retrieves an existing connection from the global pool by its name.
@@ -133,6 +133,91 @@ func (c *Connection) Queues() []string {
 	return c.queueCfg.Queues
 }
 
+// QueueBindConfig returns the current QueueBindConfig associated with the Connection instance.
+// The QueueBindConfig includes details about how queues are bound to exchanges, including
+// information like queue name, exchange name, routing key, and optional arguments.
+//
+// This method allows other parts of the application to retrieve the binding configuration
+// for queues, which is crucial for managing RabbitMQ bindings and ensuring messages
+// are routed correctly between exchanges and queues.
+//
+// Returns:
+//   - QueueBindConfig: The current configuration for queue bindings, which contains
+//     details such as the queue name, binding key and optional binding arguments.
+func (c *Connection) QueueBindConfig() QueueBindConfig {
+	return c.queueCfg
+}
+
+// ExchangeConfig returns the current ExchangeConfig associated with the Connection instance.
+// The ExchangeConfig contains settings related to RabbitMQ exchanges, such as the exchange name,
+// type, durability, and other options needed to manage exchanges.
+//
+// This method allows other parts of the application to access the configuration used for RabbitMQ exchanges,
+// which is essential for ensuring messages are routed to the correct exchange and processed accordingly.
+//
+// Returns:
+//   - ExchangeConfig: The configuration object containing the exchange's settings, which include
+//     the exchange name, type (e.g., direct, fanout), durability, auto-delete behavior, and other exchange-specific options.
+func (c *Connection) ExchangeConfig() ExchangeConfig {
+	return c.exchangeCfg
+}
+
+// ConsumeConfig returns the current ConsumeConfig associated with the Connection instance.
+// The ConsumeConfig contains settings for consuming messages from a RabbitMQ queue, such as
+// the consumer name, auto-acknowledgment, exclusive consumer options, and other related settings.
+//
+// This method provides access to the configuration used for consuming messages, ensuring that
+// the message consumption process adheres to the desired settings, such as whether to acknowledge
+// messages automatically or whether to allow multiple consumers.
+//
+// Returns:
+//   - ConsumeConfig: The configuration object that defines the parameters for message consumption,
+//     including consumer name, auto-acknowledgment, exclusive behavior and more.
+func (c *Connection) ConsumeConfig() ConsumeConfig {
+	return c.consumeCfg
+}
+
+// ExchangeAndBindQueueConfig returns the configuration that combines both the exchange
+// and queue binding settings for the current RabbitMQ connection.
+// This configuration includes details about the exchange to which the queue is bound
+// and the associated binding keys or routing configurations.
+//
+// The method is useful when you need to retrieve the combined settings that dictate how
+// messages are routed from the exchange to the bound queues. It helps ensure that the
+// exchange and queue binding configuration is properly set up for message consumption.
+//
+// Returns:
+//   - ExchangeAndQueueBindConfig: A struct that holds the combined exchange and queue binding configuration.
+//     This includes the exchange name, type, and the queue's binding keys or routing configurations.
+//     It provides essential details required for routing messages correctly between exchanges and queues.
+//
+// Important:
+//   - Ensure that the exchange and queue are correctly bound before using this configuration
+//     for message consumption or publishing.
+func (c *Connection) ExchangeAndBindQueueConfig() ExchangeAndQueueBindConfig {
+	return c.exchangeAndQueueBindCfg
+}
+
+// Channel returns the current AMQP channel associated with the Connection instance.
+// The channel is a core component used to interact with RabbitMQ, allowing for the publishing,
+// consuming, and acknowledgment of messages. Channels provide a lightweight way to communicate
+// with RabbitMQ over a single connection.
+//
+// This method gives access to the underlying *amqp.Channel, which is used to perform RabbitMQ operations.
+// The returned channel can be used to declare exchanges, queues, publish messages, and set up consumers.
+//
+// Returns:
+//   - *amqp.Channel: A pointer to the AMQP channel associated with the current connection.
+//     This channel is used for sending and receiving messages with RabbitMQ, as well as other
+//     queue-related operations such as binding, unbinding, and acknowledging deliveries.
+//
+// Important:
+//   - Ensure that the channel is open and not closed before using it for any operations.
+//     Closing a channel invalidates it for further use.
+func (c *Connection) Channel() *amqp.Channel {
+	return c.channel
+}
+
 // Connect establishes the connection to the RabbitMQ server and creates a channel for communication.
 //
 // This method constructs a URI using the connection configuration and attempts to connect to the
@@ -181,7 +266,7 @@ func (c *Connection) Connect() error {
 //
 // Parameters:
 //
-//	connCfg: ExchangeConfig - The configuration settings for the exchange, which include:
+//	connCfg: ExchangeCfg - The configuration settings for the exchange, which include:
 //	  - Name: The name of the exchange.
 //	  - Kind: The type of the exchange (e.g., direct, topic).
 //	  - Durable: Indicates whether the exchange should survive a server restart.
@@ -218,16 +303,16 @@ func (c *Connection) SetupExchange(cfg ExchangeConfig) error {
 	return nil
 }
 
-// SetupBindQueue binds a queue to the exchange with the given BindQueueConfig.
+// SetupBindQueue binds a queue to the exchange with the given QueueBindConfig.
 // If no queues are defined in the connCfg, it binds a temporary queue.
-// It iterates over all the queues specified in the BindQueueConfig and binds each queue.
+// It iterates over all the queues specified in the QueueBindConfig and binds each queue.
 //
 // Parameters:
-//   - connCfg (BindQueueConfig): The configuration of the queue, including the queue names, binding details, etc.
+//   - connCfg (QueueBindConfig): The configuration of the queue, including the queue names, binding details, etc.
 //
 // Returns:
 //   - error: If an error occurs during queue declaration or binding, it returns the error.
-func (c *Connection) SetupBindQueue(cfg BindQueueConfig) error {
+func (c *Connection) SetupBindQueue(cfg QueueBindConfig) error {
 	log.Println("SetupBindQueue.Invoked")
 
 	c.queueCfg = cfg
@@ -246,32 +331,32 @@ func (c *Connection) SetupBindQueue(cfg BindQueueConfig) error {
 }
 
 // SetupExchangeAndQueue configures both the exchange and queue settings
-// for the connection using the provided ExchangeBindQueueConfig. It first sets up
+// for the connection using the provided ExchangeAndQueueBindConfig. It first sets up
 // the exchange defined in ExchangeConfig and then binds a queue using the
-// provided BindQConfig. This method ensures that the exchange
+// provided QueueBindConfig. This method ensures that the exchange
 // is correctly configured before proceeding to bind the queue to it.
 //
 // Parameters:
-//   - connCfg: An ExchangeBindQueueConfig struct that contains the configuration
+//   - connCfg: An ExchangeAndQueueBindConfig struct that contains the configuration
 //     details for the exchange and the queue binding.
 //
 // Returns:
 //   - error: Returns nil if the setup is successful; otherwise, returns an
 //     error indicating what went wrong during the setup process.
-func (c *Connection) SetupExchangeAndQueue(cfg ExchangeBindQueueConfig) error {
+func (c *Connection) SetupExchangeAndQueue(cfg ExchangeAndQueueBindConfig) error {
 	log.Println("SetupExchangeAndQueue.Invoked")
 
 	var err error
 
-	if err = c.SetupExchange(cfg.ExchangeConfig); err != nil {
+	if err = c.SetupExchange(cfg.ExchangeCfg); err != nil {
 		return err
 	}
 
-	if err = c.SetupBindQueue(cfg.BindQConfig); err != nil {
+	if err = c.SetupBindQueue(cfg.QueueBindCfg); err != nil {
 		return err
 	}
 
-	c.exchangeQueueCfg = cfg
+	c.exchangeAndQueueBindCfg = cfg
 
 	return nil
 }
@@ -544,7 +629,7 @@ func (c *Connection) reconnect() error {
 			return nil
 		}
 
-		if exqErr = c.SetupExchangeAndQueue(c.exchangeQueueCfg); exqErr == nil {
+		if exqErr = c.SetupExchangeAndQueue(c.exchangeAndQueueBindCfg); exqErr == nil {
 			return nil
 		}
 
@@ -570,7 +655,7 @@ func (c *Connection) isEmptyQueues() bool {
 	return len(c.queueCfg.Queues) == 0 || c.queueCfg.Queues == nil
 }
 
-func (c *Connection) declareAndBindQueue(queueName string, cfg BindQueueConfig) error {
+func (c *Connection) declareAndBindQueue(queueName string, cfg QueueBindConfig) error {
 	log.Println("declareAndBindQueue.Invoked")
 
 	q, err := c.channel.QueueDeclare(
