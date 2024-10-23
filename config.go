@@ -30,8 +30,8 @@ type ExchangeConfig struct {
 	Args       amqp.Table   // Additional arguments for exchange declaration.
 }
 
-// BindQueueConfig defines the configuration needed to declare and bind a queue in RabbitMQ.
-type BindQueueConfig struct {
+// QueueBindConfig defines the configuration needed to declare and bind a queue in RabbitMQ.
+type QueueBindConfig struct {
 	Queues           []string   // List of queues to declare.
 	Durable          bool       // Whether the queue should survive server restarts (true for durable queues).
 	AutoDelete       bool       // Whether the queue should be automatically deleted when no longer in use.
@@ -62,8 +62,8 @@ type PublishConfig struct {
 	Immediate    bool   // Whether the message must be immediately delivered to a consumer (otherwise returned to the sender).
 }
 
-// ExchangeBindQueueConfig is a combined configuration for declaring an exchange and binding it to a queue.
-type ExchangeBindQueueConfig struct {
-	ExchangeConfig ExchangeConfig  // The configuration for declaring the exchange.
-	BindQConfig    BindQueueConfig // The configuration for declaring and binding the queue.
+// ExchangeAndQueueBindConfig is a combined configuration for declaring an exchange and binding it to a queue.
+type ExchangeAndQueueBindConfig struct {
+	ExchangeCfg  ExchangeConfig  // The configuration for declaring the exchange.
+	QueueBindCfg QueueBindConfig // The configuration for declaring and binding the queue.
 }

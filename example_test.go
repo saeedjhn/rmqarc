@@ -216,7 +216,7 @@ func ExampleConnection_SetupExchange() {
 }
 
 // ExampleConnection_SetupBindQueue demonstrates how to use the SetupBindQueue
-// method to declare and bind queues to an exchange using the specified BindQueueConfig.
+// method to declare and bind queues to an exchange using the specified QueueBindConfig.
 func ExampleConnection_SetupBindQueue() {
 	// Define the connection configuration for RabbitMQ.
 	connCfg := rmqarc.ConnectionConfig{
@@ -259,7 +259,7 @@ func ExampleConnection_SetupBindQueue() {
 	}
 
 	// Define the queue configuration for binding queues to the exchange.
-	queueCfg := rmqarc.BindQueueConfig{
+	queueCfg := rmqarc.QueueBindConfig{
 		Queues: []string{
 			"example-queue-1",
 			"example-queue-2",
@@ -321,7 +321,7 @@ func ExampleConnection_SetupExchangeAndQueue() {
 	}
 
 	// Define the queue binding configuration
-	bindQCfg := rmqarc.BindQueueConfig{
+	bindQCfg := rmqarc.QueueBindConfig{
 		Queues:           []string{"queue1", "queue2"}, // Queues to bind
 		Durable:          true,                         // Durable queues
 		AutoDelete:       false,                        // Do not auto-delete
@@ -336,9 +336,9 @@ func ExampleConnection_SetupExchangeAndQueue() {
 	}
 
 	// Combine exchange and queue configuration
-	exchangeBindQueueCfg := rmqarc.ExchangeBindQueueConfig{
-		ExchangeConfig: exCfg,
-		BindQConfig:    bindQCfg,
+	exchangeBindQueueCfg := rmqarc.ExchangeAndQueueBindConfig{
+		ExchangeCfg:  exCfg,
+		QueueBindCfg: bindQCfg,
 	}
 
 	// Set up the exchange and bind the queue
@@ -391,7 +391,7 @@ func ExampleConnection_StartConsume() {
 	}
 
 	// Step 5: Define the queue configuration for binding queues to the exchange.
-	queueCfg := rmqarc.BindQueueConfig{
+	queueCfg := rmqarc.QueueBindConfig{
 		Queues: []string{
 			"example-queue-1",
 			"example-queue-2",
@@ -490,7 +490,7 @@ func ExampleConnection_HandleConsumedDeliveries() {
 	}
 
 	// Step 5: Define the queue configuration for binding queues to the exchange.
-	queueCfg := rmqarc.BindQueueConfig{
+	queueCfg := rmqarc.QueueBindConfig{
 		Queues:           []string{"example-queue-1", "example-queue-2"}, // Define the queue names to be declared and bound to the exchange
 		Durable:          true,                                           // The queue will survive a RabbitMQ server restart if set to true
 		AutoDelete:       false,                                          // The queue will not be automatically deleted when no longer in use
@@ -637,7 +637,7 @@ func ExampleConnection_HandleConsumedDeliveriesAutomatic() {
 	}
 
 	// Define the queue configuration for binding queues to the exchange.
-	queueCfg := rmqarc.BindQueueConfig{
+	queueCfg := rmqarc.QueueBindConfig{
 		Queues:           []string{"example-queue-1", "example-queue-2"}, // Define the queue names to be declared and bound to the exchange
 		Durable:          true,                                           // The queue will survive a RabbitMQ server restart if set to true
 		AutoDelete:       false,                                          // The queue will not be automatically deleted when no longer in use
