@@ -282,6 +282,8 @@ func (c *Connection) Connect() error {
 func (c *Connection) SetupExchange(cfg ExchangeConfig) error {
 	log.Println("SetupExchange.Invoked")
 
+	c.exchangeCfg = cfg
+
 	if err := c.channel.ExchangeDeclare(
 		cfg.Name,
 		cfg.Kind.String(),
@@ -297,8 +299,6 @@ func (c *Connection) SetupExchange(cfg ExchangeConfig) error {
 			err,
 		)
 	}
-
-	c.exchangeCfg = cfg
 
 	return nil
 }
@@ -348,6 +348,8 @@ func (c *Connection) SetupExchangeAndQueue(cfg ExchangeAndQueueBindConfig) error
 
 	var err error
 
+	c.exchangeAndQueueBindCfg = cfg
+
 	if err = c.SetupExchange(cfg.ExchangeCfg); err != nil {
 		return err
 	}
@@ -355,8 +357,6 @@ func (c *Connection) SetupExchangeAndQueue(cfg ExchangeAndQueueBindConfig) error
 	if err = c.SetupBindQueue(cfg.QueueBindCfg); err != nil {
 		return err
 	}
-
-	c.exchangeAndQueueBindCfg = cfg
 
 	return nil
 }
@@ -376,6 +376,8 @@ func (c *Connection) SetupExchangeAndQueue(cfg ExchangeAndQueueBindConfig) error
 //   - error: If an error occurs while starting consumption, it returns the error.
 func (c *Connection) StartConsume(cfg ConsumeConfig) (map[string]<-chan amqp.Delivery, error) {
 	log.Println("StartConsume.Invoked")
+
+	c.consumeCfg = cfg
 
 	m := make(map[string]<-chan amqp.Delivery)
 	if c.isEmptyQueues() {
@@ -461,6 +463,7 @@ func (c *Connection) HandleConsumedDeliveriesAutomatic(
 
 	for {
 		for queue, delivery := range c.deliveries {
+
 			go func(queue string, delivery <-chan amqp.Delivery) {
 				for {
 					select {
@@ -556,10 +559,6 @@ func (c *Connection) HandleConsumedDeliveriesAutomatic(
 func (c *Connection) Publish(cfg PublishConfig, msg Message) error {
 	log.Println("Publish.Invoked")
 
-	if len(cfg.ExchangeName) == 0 && len(c.exchangeCfg.Name) == 0 {
-		return errors.New("exchange is not selected")
-	}
-
 	// non-blocking channel - if there is no error will go to default where we do nothing
 	select {
 	case err := <-c.errChan:
@@ -567,6 +566,10 @@ func (c *Connection) Publish(cfg PublishConfig, msg Message) error {
 			return c.reconnect()
 		}
 	default:
+	}
+
+	if len(cfg.ExchangeName) == 0 && len(c.exchangeCfg.Name) == 0 {
+		return errors.New("publish failed: no exchange selected; specify an exchange in the configuration")
 	}
 
 	p := amqp.Publishing{
@@ -595,7 +598,12 @@ func (c *Connection) Publish(cfg PublishConfig, msg Message) error {
 		cfg.Immediate,
 		p,
 	); err != nil {
-		return fmt.Errorf("Publish.Publish: %w", err)
+		return fmt.Errorf(
+			"publish failed: message delivery to exchange '%s' with routing key '%s' unsuccessful: %w",
+			ex,
+			cfg.RoutingKey,
+			err,
+		)
 	}
 
 	return nil
@@ -620,8 +628,10 @@ func (c *Connection) reconnect() error {
 
 	var (
 		retryTimeout = c.ConnCfg.BaseRetryTimeout
-		connErr      error
-		exqErr       error
+
+		connErr error
+		exErr   error
+		qbErr   error
 	)
 
 	for range c.ConnCfg.MaxRetry {
@@ -629,12 +639,16 @@ func (c *Connection) reconnect() error {
 			return nil
 		}
 
-		if exqErr = c.SetupExchangeAndQueue(c.exchangeAndQueueBindCfg); exqErr == nil {
+		if exErr = c.SetupExchange(c.exchangeCfg); exErr == nil {
 			return nil
 		}
 
+		if qbErr = c.SetupBindQueue(c.queueCfg); qbErr == nil {
+			return nil
+		}
+
+		log.Printf("retryTimeout: %v", retryTimeout)
 		retryTimeout = time.Duration(float64(retryTimeout) * c.ConnCfg.Multiplier)
-		//log.Printf("retryTimeout: %v", retryTimeout)
 
 		time.Sleep(retryTimeout)
 
@@ -644,10 +658,10 @@ func (c *Connection) reconnect() error {
 	}
 
 	return fmt.Errorf(
-		"reconnect failed after %d attempts: connection error: %w, exchange/queue setup error: %w",
+		"reconnect failed after %d attempts: %w, exchange/queue setup error: %w",
 		c.ConnCfg.MaxRetry,
 		connErr,
-		exqErr,
+		exErr,
 	)
 }
 
@@ -730,8 +744,6 @@ func (c *Connection) consumeFromTemporaryQueue(
 		)
 	}
 
-	c.consumeCfg = cfg
-
 	deliveriesMap[uuID] = deliveries
 	c.deliveries = deliveriesMap
 
@@ -771,7 +783,6 @@ func (c *Connection) consumeFromDefinedQueues(
 		deliveriesMap[q] = deliveries
 	}
 
-	c.consumeCfg = cfg
 	c.deliveries = deliveriesMap
 
 	return deliveriesMap, nil
