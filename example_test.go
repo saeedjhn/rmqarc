@@ -482,14 +482,21 @@ func ExampleConnection_HandleConsumedDeliveries() {
 		Args:       nil,                   // No additional arguments for this exchange
 	}
 
-	// Step 4: Set up the exchange using the SetupExchange method.
-	err := conn.SetupExchange(exchangeCfg)
+	// Step 4: Attempt to establish a connection to the RabbitMQ server
+	err := conn.Connect()
+	if err != nil {
+		fmt.Println("Failed attempt to establish a connection to server:", err.Error())
+		return
+	}
+
+	// Step 5: Set up the exchange using the SetupExchange method.
+	err = conn.SetupExchange(exchangeCfg)
 	if err != nil {
 		fmt.Println("Failed to set up exchange:", err.Error())
 		return
 	}
 
-	// Step 5: Define the queue configuration for binding queues to the exchange.
+	// Step 6: Define the queue configuration for binding queues to the exchange.
 	queueCfg := rmqarc.QueueBindConfig{
 		Queues:           []string{"example-queue-1", "example-queue-2"}, // Define the queue names to be declared and bound to the exchange
 		Durable:          true,                                           // The queue will survive a RabbitMQ server restart if set to true
@@ -504,14 +511,14 @@ func ExampleConnection_HandleConsumedDeliveries() {
 		PrefetchGlobal:   false,                                          // Apply the prefetch count limit to the entire connection or just this channel
 	}
 
-	// Step 6: Bind the queues to the exchange using the SetupBindQueue method.
+	// Step 7: Bind the queues to the exchange using the SetupBindQueue method.
 	err = conn.SetupBindQueue(queueCfg)
 	if err != nil {
 		fmt.Println("Failed to bind queues to the exchange:", err.Error())
 		return
 	}
 
-	// Step 7: Define the consume configuration
+	// Step 8: Define the consume configuration
 	consumeCfg := rmqarc.ConsumeConfig{
 		AutoAck:   false, // AutoAck: If false, the consumer must manually acknowledge messages (Manual Acknowledgment).
 		Exclusive: false, // Exclusive: If true, the queue will only be accessible to this consumer.
@@ -520,14 +527,14 @@ func ExampleConnection_HandleConsumedDeliveries() {
 		Args:      nil,   // Args: Additional arguments for consumer configuration (often nil unless specific options are needed).
 	}
 
-	// Step 8: Start consuming messages from the defined queues
+	// Step 9: Start consuming messages from the defined queues
 	deliveries, err := conn.StartConsume(consumeCfg)
 	if err != nil {
 		fmt.Printf("Failed to start consuming messages: %v", err)
 		return
 	}
 
-	// Step 9: Define messageHandler
+	// Step 10: Define messageHandler
 	messageHandler := func(c rmqarc.Connection, q string, deliveries <-chan amqp.Delivery) {
 		for d := range deliveries {
 			m := rmqarc.Message{
@@ -559,7 +566,7 @@ func ExampleConnection_HandleConsumedDeliveries() {
 		}
 	}
 
-	// Step 10: Loop deliveries & handle error from consume deliveries
+	// Step 11: Loop deliveries & handle error from consume deliveries
 	for q, d := range deliveries {
 		go func() {
 			err = conn.HandleConsumedDeliveries(q, d, messageHandler)
